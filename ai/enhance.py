@@ -47,21 +47,21 @@ def retry_on_connection_error(max_retries=3, initial_delay=2):
                     # Connection-related errors that should be retried
                     if attempt < max_retries - 1:
                         delay = initial_delay * (2 ** attempt)
-                        print(f"连接失败，{delay}秒后重试... (尝试 {attempt + 1}/{max_retries}) / Connection failed, retrying in {delay}s... (attempt {attempt + 1}/{max_retries})", file=sys.stderr)
+                        print(f"连接失败: {type(e).__name__}，{delay}秒后重试... (尝试 {attempt + 1}/{max_retries}) / Connection failed: {type(e).__name__}, retrying in {delay}s... (attempt {attempt + 1}/{max_retries})", file=sys.stderr)
                         time.sleep(delay)
                     else:
-                        print(f"达到最大重试次数，跳过此项 / Max retries reached, skipping", file=sys.stderr)
+                        print(f"达到最大重试次数，跳过此项: {e} / Max retries reached, skipping: {e}", file=sys.stderr)
                         raise
                 except Exception as e:
                     # Check for connection errors in LangChain exceptions
                     error_str = str(e).lower()
-                    if "connection error" in error_str or "timeout" in error_str or "connect" in error_str:
+                    if "connection" in error_str and ("error" in error_str or "refused" in error_str or "failed" in error_str) or "timeout" in error_str:
                         if attempt < max_retries - 1:
                             delay = initial_delay * (2 ** attempt)
-                            print(f"连接失败，{delay}秒后重试... (尝试 {attempt + 1}/{max_retries}) / Connection failed, retrying in {delay}s... (attempt {attempt + 1}/{max_retries})", file=sys.stderr)
+                            print(f"连接失败: {type(e).__name__}，{delay}秒后重试... (尝试 {attempt + 1}/{max_retries}) / Connection failed: {type(e).__name__}, retrying in {delay}s... (attempt {attempt + 1}/{max_retries})", file=sys.stderr)
                             time.sleep(delay)
                         else:
-                            print(f"达到最大重试次数，跳过此项 / Max retries reached, skipping", file=sys.stderr)
+                            print(f"达到最大重试次数，跳过此项: {e} / Max retries reached, skipping: {e}", file=sys.stderr)
                             raise
                     else:
                         # Not a connection error, re-raise immediately
