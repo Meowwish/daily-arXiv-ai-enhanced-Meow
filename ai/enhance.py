@@ -37,26 +37,34 @@ def retry_on_connection_error(max_retries=3, initial_delay=2):
             for attempt in range(max_retries):
                 try:
                     return func(*args, **kwargs)
-                except Exception as e:
-                    error_str = str(e)
-                    error_type = type(e).__name__
-                    # Check for connection-related errors
-                    is_connection_error = (
-                        "Connection error" in error_str or
-                        "ConnectionError" in error_type or
-                        "Timeout" in error_type or
-                        "TimeoutError" in error_type or
-                        "ConnectTimeout" in error_str or
-                        "ReadTimeout" in error_str
-                    )
-                    
-                    if is_connection_error and attempt < max_retries - 1:
+                except (
+                    # Requests library exceptions
+                    requests.exceptions.ConnectionError,
+                    requests.exceptions.Timeout,
+                    requests.exceptions.ConnectTimeout,
+                    requests.exceptions.ReadTimeout,
+                ) as e:
+                    # Connection-related errors that should be retried
+                    if attempt < max_retries - 1:
                         delay = initial_delay * (2 ** attempt)
                         print(f"连接失败，{delay}秒后重试... (尝试 {attempt + 1}/{max_retries}) / Connection failed, retrying in {delay}s... (attempt {attempt + 1}/{max_retries})", file=sys.stderr)
                         time.sleep(delay)
                     else:
-                        if is_connection_error:
+                        print(f"达到最大重试次数，跳过此项 / Max retries reached, skipping", file=sys.stderr)
+                        raise
+                except Exception as e:
+                    # Check for connection errors in LangChain exceptions
+                    error_str = str(e).lower()
+                    if "connection error" in error_str or "timeout" in error_str or "connect" in error_str:
+                        if attempt < max_retries - 1:
+                            delay = initial_delay * (2 ** attempt)
+                            print(f"连接失败，{delay}秒后重试... (尝试 {attempt + 1}/{max_retries}) / Connection failed, retrying in {delay}s... (attempt {attempt + 1}/{max_retries})", file=sys.stderr)
+                            time.sleep(delay)
+                        else:
                             print(f"达到最大重试次数，跳过此项 / Max retries reached, skipping", file=sys.stderr)
+                            raise
+                    else:
+                        # Not a connection error, re-raise immediately
                         raise
         return wrapper
     return decorator
