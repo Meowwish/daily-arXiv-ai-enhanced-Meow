@@ -2,6 +2,8 @@ import os
 import json
 import sys
 import re
+import time
+from functools import wraps
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict
 from queue import Queue
@@ -27,6 +29,38 @@ if os.path.exists('.env'):
 template = open("template.txt", "r").read()
 system = open("system.txt", "r").read()
 
+def retry_on_connection_error(max_retries=3, initial_delay=2):
+    """重试装饰器：处理连接错误 / Retry decorator: Handle connection errors"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    error_str = str(e)
+                    error_type = type(e).__name__
+                    # Check for connection-related errors
+                    is_connection_error = (
+                        "Connection error" in error_str or
+                        "ConnectionError" in error_type or
+                        "Timeout" in error_type or
+                        "TimeoutError" in error_type or
+                        "ConnectTimeout" in error_str or
+                        "ReadTimeout" in error_str
+                    )
+                    
+                    if is_connection_error and attempt < max_retries - 1:
+                        delay = initial_delay * (2 ** attempt)
+                        print(f"连接失败，{delay}秒后重试... (尝试 {attempt + 1}/{max_retries}) / Connection failed, retrying in {delay}s... (attempt {attempt + 1}/{max_retries})", file=sys.stderr)
+                        time.sleep(delay)
+                    else:
+                        if is_connection_error:
+                            print(f"达到最大重试次数，跳过此项 / Max retries reached, skipping", file=sys.stderr)
+                        raise
+        return wrapper
+    return decorator
+
 def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser()
@@ -34,6 +68,7 @@ def parse_args():
     parser.add_argument("--max_workers", type=int, default=1, help="Maximum number of parallel workers")
     return parser.parse_args()
 
+@retry_on_connection_error(max_retries=3, initial_delay=2)
 def process_single_item(chain, item: Dict, language: str) -> Dict:
     def is_sensitive(content: str) -> bool:
         """
