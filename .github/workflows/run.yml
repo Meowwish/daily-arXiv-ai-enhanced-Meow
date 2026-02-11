@@ -310,7 +310,9 @@ jobs:
         # These files are already saved to temporary directory, so safe to remove
         # 清理所有可能冲突的数据文件（jsonl 和 md）
         # Clean all potentially conflicting data files (jsonl and md)
-        rm -rf data/*.jsonl data/*.md 2>/dev/null || true
+
+        rm -rf data/*.jsonl 2>/dev/null || true
+        rm -rf data/*.md 2>/dev/null || true
         rm -f assets/file-list.txt 2>/dev/null || true
         
         # 检查 data 分支是否存在 / Check if data branch exists
