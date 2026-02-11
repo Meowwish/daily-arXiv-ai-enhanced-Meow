@@ -2,6 +2,8 @@ import os
 import json
 import sys
 import re
+import time
+from functools import wraps
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict
 from queue import Queue
@@ -27,6 +29,46 @@ if os.path.exists('.env'):
 template = open("template.txt", "r").read()
 system = open("system.txt", "r").read()
 
+def retry_on_connection_error(max_retries=3, initial_delay=2):
+    """重试装饰器：处理连接错误 / Retry decorator: Handle connection errors"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except (
+                    # Requests library exceptions
+                    requests.exceptions.ConnectionError,
+                    requests.exceptions.Timeout,
+                    requests.exceptions.ConnectTimeout,
+                    requests.exceptions.ReadTimeout,
+                ) as e:
+                    # Connection-related errors that should be retried
+                    if attempt < max_retries - 1:
+                        delay = initial_delay * (2 ** attempt)
+                        print(f"连接失败: {type(e).__name__}，{delay}秒后重试... (尝试 {attempt + 1}/{max_retries}) / Connection failed: {type(e).__name__}, retrying in {delay}s... (attempt {attempt + 1}/{max_retries})", file=sys.stderr)
+                        time.sleep(delay)
+                    else:
+                        print(f"达到最大重试次数，跳过此项: {e} / Max retries reached, skipping: {e}", file=sys.stderr)
+                        raise
+                except Exception as e:
+                    # Check for connection errors in LangChain exceptions
+                    error_str = str(e).lower()
+                    if "connection" in error_str and ("error" in error_str or "refused" in error_str or "failed" in error_str) or "timeout" in error_str:
+                        if attempt < max_retries - 1:
+                            delay = initial_delay * (2 ** attempt)
+                            print(f"连接失败: {type(e).__name__}，{delay}秒后重试... (尝试 {attempt + 1}/{max_retries}) / Connection failed: {type(e).__name__}, retrying in {delay}s... (attempt {attempt + 1}/{max_retries})", file=sys.stderr)
+                            time.sleep(delay)
+                        else:
+                            print(f"达到最大重试次数，跳过此项: {e} / Max retries reached, skipping: {e}", file=sys.stderr)
+                            raise
+                    else:
+                        # Not a connection error, re-raise immediately
+                        raise
+        return wrapper
+    return decorator
+
 def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser()
@@ -34,6 +76,7 @@ def parse_args():
     parser.add_argument("--max_workers", type=int, default=1, help="Maximum number of parallel workers")
     return parser.parse_args()
 
+@retry_on_connection_error(max_retries=3, initial_delay=2)
 def process_single_item(chain, item: Dict, language: str) -> Dict:
     def is_sensitive(content: str) -> bool:
         """
